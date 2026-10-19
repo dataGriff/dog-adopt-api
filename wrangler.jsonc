@@ -1,0 +1,30 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "dog-adopt-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "vars": {
+    "API_VERSION": "0.1.0",
+    // Comma-separated list of allowed browser origins. "*" allows any.
+    "CORS_ORIGINS": "*"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "dogadopt",
+      // Replace with the id `wrangler d1 create dogadopt` prints.
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ]
+  // Optional: emit dogs.listed/updated/withdrawn events (see the AsyncAPI).
+  // Create the queue first (`wrangler queues create dogadopt-dog-events`),
+  // then uncomment. The API works without it; nothing is emitted.
+  // ,"queues": {
+  //   "producers": [
+  //     { "binding": "DOG_EVENTS", "queue": "dogadopt-dog-events" }
+  //   ]
+  // }
+}
