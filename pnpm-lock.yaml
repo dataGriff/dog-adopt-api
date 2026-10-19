@@ -10,7 +10,7 @@ importers:
     dependencies:
       '@dogadopt/contracts':
         specifier: github:dataGriff/dog-adopt-spec#ccr-36d5f29f-ktwvoo
-        version: git+https://git@github.com:dataGriff/dog-adopt-spec.git#8da61590ae4abfd3f170893db928f4566e90911e
+        version: git+https://git@github.com:dataGriff/dog-adopt-spec.git#f9735b0d375e4a022d6b30b6ce167aebf4f6551f
       hono:
         specifier: ^4.13.13
         version: 4.13.13
@@ -109,8 +109,8 @@ packages:
     resolution: {integrity: sha512-IchNf6dN4tHoMFIn/7OE8LWZ19Y6q/67Bmf6vnGREv8RSbBVb9LPJxEcnwrcwX6ixSvaiGoomAUvu4YSxXrVgw==}
     engines: {node: '>=12'}
 
-  '@dogadopt/contracts@git+https://git@github.com:dataGriff/dog-adopt-spec.git#8da61590ae4abfd3f170893db928f4566e90911e':
-    resolution: {commit: 8da61590ae4abfd3f170893db928f4566e90911e, repo: git@github.com:dataGriff/dog-adopt-spec.git, type: git}
+  '@dogadopt/contracts@git+https://git@github.com:dataGriff/dog-adopt-spec.git#f9735b0d375e4a022d6b30b6ce167aebf4f6551f':
+    resolution: {commit: f9735b0d375e4a022d6b30b6ce167aebf4f6551f, repo: git@github.com:dataGriff/dog-adopt-spec.git, type: git}
     version: 0.1.0
     engines: {node: '>=22'}
 
@@ -1389,7 +1389,7 @@ snapshots:
     dependencies:
       '@jridgewell/trace-mapping': 0.3.9
 
-  '@dogadopt/contracts@git+https://git@github.com:dataGriff/dog-adopt-spec.git#8da61590ae4abfd3f170893db928f4566e90911e':
+  '@dogadopt/contracts@git+https://git@github.com:dataGriff/dog-adopt-spec.git#f9735b0d375e4a022d6b30b6ce167aebf4f6551f':
     dependencies:
       openapi-fetch: 0.17.0
       zod: 4.6.7

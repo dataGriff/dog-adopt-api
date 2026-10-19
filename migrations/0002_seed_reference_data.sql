@@ -402,7 +402,6 @@ INSERT INTO breeds (name) VALUES ('Welsh Springer Spaniel');
 INSERT INTO breeds (name) VALUES ('Welsh Terrier');
 INSERT INTO breeds (name) VALUES ('West Highland White Terrier');
 INSERT INTO breeds (name) VALUES ('Whippet');
-INSERT INTO breeds (name) VALUES ('Wire Fox Terrier');
 INSERT INTO breeds (name) VALUES ('Wirehaired Pointing Griffon');
 INSERT INTO breeds (name) VALUES ('Wirehaired Vizsla');
 INSERT INTO breeds (name) VALUES ('Xoloitzcuintli');
@@ -464,6 +463,7 @@ INSERT INTO breed_synonyms (synonym, breed_name) VALUES ('Springer Spaniel', 'En
 INSERT INTO breed_synonyms (synonym, breed_name) VALUES ('Flat Coat', 'Flat-Coated Retriever');
 INSERT INTO breed_synonyms (synonym, breed_name) VALUES ('Flat Coated Retriever', 'Flat-Coated Retriever');
 INSERT INTO breed_synonyms (synonym, breed_name) VALUES ('Smooth Fox Terrier', 'Fox Terrier (Smooth)');
+INSERT INTO breed_synonyms (synonym, breed_name) VALUES ('Wire Fox Terrier', 'Fox Terrier (Wire)');
 INSERT INTO breed_synonyms (synonym, breed_name) VALUES ('Frenchie', 'French Bulldog');
 INSERT INTO breed_synonyms (synonym, breed_name) VALUES ('GSD', 'German Shepherd');
 INSERT INTO breed_synonyms (synonym, breed_name) VALUES ('Alsatian', 'German Shepherd');
@@ -556,5 +556,4 @@ INSERT INTO breed_synonyms (synonym, breed_name) VALUES ('Westie', 'West Highlan
 INSERT INTO breed_synonyms (synonym, breed_name) VALUES ('West Highland Terrier', 'West Highland White Terrier');
 INSERT INTO breed_synonyms (synonym, breed_name) VALUES ('Whippy', 'Whippet');
 INSERT INTO breed_synonyms (synonym, breed_name) VALUES ('Whippet Cross', 'Whippet');
-INSERT INTO breed_synonyms (synonym, breed_name) VALUES ('Wire Fox', 'Wire Fox Terrier');
 INSERT INTO breed_synonyms (synonym, breed_name) VALUES ('Yorkie', 'Yorkshire Terrier');
