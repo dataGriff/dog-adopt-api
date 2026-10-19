@@ -19,6 +19,8 @@ export interface DogListFilters {
   goodWithDogs?: boolean;
   goodWithCats?: boolean;
   q?: string;
+  /** When set, distance from this point to each dog's rescue is computed in SQL, ordered nearest first, and limited by radiusKm. */
+  near?: { lat: number; lng: number; radiusKm?: number };
 }
 
 export interface DogListedRow extends DogRow {
@@ -27,6 +29,8 @@ export interface DogListedRow extends DogRow {
   rescue_website: string | null;
   rescue_latitude: number | null;
   rescue_longitude: number | null;
+  /** Only selected for a `near` query; null when the rescue has no coordinates. */
+  distance_km?: number | null;
 }
 
 export interface DogListedWithBreeds extends DogListedRow {
@@ -49,13 +53,24 @@ export interface StatusEventRow {
   effective_at: string;
 }
 
+export type SnapshotStatus = 'pending' | 'done' | 'failed';
+
 export interface SnapshotRow {
   id: string;
   rescue_id: string;
   idempotency_key: string;
   body_hash: string;
-  result: string;
+  status: SnapshotStatus;
+  result: string | null;
 }
+
+/** Great-circle distance in km between the bound point (lat, lng, lat, lng, in that order) and the rescue's coordinates; NULL without coordinates. */
+const DISTANCE_SQL = `CASE WHEN r.latitude IS NULL OR r.longitude IS NULL THEN NULL ELSE
+  2 * 6371.0088 * asin(MIN(1.0, sqrt(
+    sin(radians(r.latitude - ?) / 2) * sin(radians(r.latitude - ?) / 2)
+    + cos(radians(?)) * cos(radians(r.latitude)) * sin(radians(r.longitude - ?) / 2) * sin(radians(r.longitude - ?) / 2)
+  ))) END`;
+const distanceParams = (lat: number, lng: number) => [lat, lat, lat, lng, lng];
 
 const EFFECTIVE_AGE_SQL = `CASE WHEN d.birth_year IS NULL THEN d.age ELSE
   CASE
@@ -108,33 +123,41 @@ export class Repo {
 
   // ----- dogs --------------------------------------------------------------
 
-  async getDog(id: string, now: Date): Promise<DogListedWithBreeds | null> {
+  async getDog(id: string): Promise<DogListedWithBreeds | null> {
     const row = await this.db
       .prepare(`${this.dogSelectSql()} WHERE d.id = ?`)
       .bind(id)
       .first<DogListedRow>();
     if (!row) return null;
-    void now;
     const breeds = await this.breedsFor([id]);
     return { ...row, breeds: breeds.get(id) ?? [] };
   }
 
-  /** Filtered dogs, newest first. With `unbounded` every match is returned (used for distance ordering). */
-  async listDogs(filters: DogListFilters, now: Date, paging: { page: number; pageSize: number } | null): Promise<{ items: DogListedWithBreeds[]; total: number }> {
+  /**
+   * One page of filtered dogs, newest first, or nearest first when
+   * `filters.near` is set (dogs whose rescue has no coordinates sort last
+   * and are excluded by a radius). Distance, filtering, ordering and
+   * paging all happen in SQL; breeds are loaded for the page's rows only.
+   */
+  async listDogs(filters: DogListFilters, now: Date, paging: { page: number; pageSize: number }): Promise<{ items: DogListedWithBreeds[]; total: number }> {
     const { whereSql, params } = this.dogWhere(filters, now);
-    const order = 'ORDER BY d.created_at DESC, d.id DESC';
+    const near = filters.near;
+    const select = near ? `${this.dogSelectSql(`, (${DISTANCE_SQL}) AS distance_km`)}` : this.dogSelectSql();
+    const selectParams = near ? [...distanceParams(near.lat, near.lng), ...params] : params;
+    const order = near ? 'ORDER BY distance_km IS NULL, distance_km ASC, d.created_at DESC, d.id DESC' : 'ORDER BY d.created_at DESC, d.id DESC';
+    const countSql = near
+      ? `SELECT COUNT(*) AS n FROM (${select} ${whereSql})`
+      : `SELECT COUNT(*) AS n FROM dogs d JOIN rescues r ON r.id = d.rescue_id ${whereSql}`;
     const [count, rows] = await Promise.all([
-      this.db.prepare(`SELECT COUNT(*) AS n FROM dogs d JOIN rescues r ON r.id = d.rescue_id ${whereSql}`).bind(...params).first<{ n: number }>(),
-      paging
-        ? this.db.prepare(`${this.dogSelectSql()} ${whereSql} ${order} LIMIT ? OFFSET ?`).bind(...params, paging.pageSize, (paging.page - 1) * paging.pageSize).all<DogListedRow>()
-        : this.db.prepare(`${this.dogSelectSql()} ${whereSql} ${order}`).bind(...params).all<DogListedRow>(),
+      this.db.prepare(countSql).bind(...selectParams).first<{ n: number }>(),
+      this.db.prepare(`${select} ${whereSql} ${order} LIMIT ? OFFSET ?`).bind(...selectParams, paging.pageSize, (paging.page - 1) * paging.pageSize).all<DogListedRow>(),
     ]);
     const breeds = await this.breedsFor(rows.results.map((r) => r.id));
     return { items: rows.results.map((r) => ({ ...r, breeds: breeds.get(r.id) ?? [] })), total: count?.n ?? 0 };
   }
 
-  private dogSelectSql(): string {
-    return `SELECT d.*, r.name AS rescue_name, r.region AS rescue_region, r.website AS rescue_website, r.latitude AS rescue_latitude, r.longitude AS rescue_longitude
+  private dogSelectSql(extraColumns = ''): string {
+    return `SELECT d.*, r.name AS rescue_name, r.region AS rescue_region, r.website AS rescue_website, r.latitude AS rescue_latitude, r.longitude AS rescue_longitude${extraColumns}
       FROM dogs d JOIN rescues r ON r.id = d.rescue_id`;
   }
 
@@ -157,6 +180,11 @@ export class Repo {
       where.push(`(d.name LIKE ? ESCAPE '\\' COLLATE NOCASE OR EXISTS (SELECT 1 FROM dog_breeds b WHERE b.dog_id = d.id AND (b.breed_name LIKE ? ESCAPE '\\' COLLATE NOCASE OR b.unresolved_name LIKE ? ESCAPE '\\' COLLATE NOCASE)))`);
       params.push(like, like, like);
     }
+    if (f.near?.radiusKm !== undefined) {
+      // The distance expression is bound again here; SQLite cannot reference the select alias in WHERE.
+      where.push(`(${DISTANCE_SQL}) <= ?`);
+      params.push(...distanceParams(f.near.lat, f.near.lng), f.near.radiusKm);
+    }
     return { whereSql: `WHERE ${where.join(' AND ')}`, params };
   }
 
@@ -177,9 +205,12 @@ export class Repo {
     return out;
   }
 
-  /** Every dog of a rescue, any status, with breeds. Used by reconciliation. */
+  /** Every dog of a rescue, any status, with breeds and its latest withdrawal time. Used by reconciliation. */
   async dogsOfRescue(rescueId: string): Promise<DogWithBreeds[]> {
-    const rows = await this.db.prepare('SELECT * FROM dogs WHERE rescue_id = ?').bind(rescueId).all<DogRow>();
+    const rows = await this.db
+      .prepare(`SELECT d.*, (SELECT MAX(e.effective_at) FROM dog_status_events e WHERE e.dog_id = d.id AND e.status = 'withdrawn') AS withdrawn_at FROM dogs d WHERE d.rescue_id = ?`)
+      .bind(rescueId)
+      .all<DogRow & { withdrawn_at: string | null }>();
     const breeds = await this.breedsFor(rows.results.map((r) => r.id));
     return rows.results.map((r) => ({ ...r, breeds: breeds.get(r.id) ?? [] }));
   }
@@ -218,18 +249,53 @@ export class Repo {
   // ----- snapshots ---------------------------------------------------------
 
   async snapshotByKey(idempotencyKey: string): Promise<SnapshotRow | null> {
-    return this.db.prepare('SELECT id, rescue_id, idempotency_key, body_hash, result FROM snapshots WHERE idempotency_key = ?').bind(idempotencyKey).first<SnapshotRow>();
+    return this.db.prepare('SELECT id, rescue_id, idempotency_key, body_hash, status, result FROM snapshots WHERE idempotency_key = ?').bind(idempotencyKey).first<SnapshotRow>();
   }
 
+  /** The stored result of a finished snapshot; null when unknown or not yet done. */
   async snapshotResult(rescueId: string, snapshotId: string): Promise<SnapshotResult | null> {
-    const row = await this.db.prepare('SELECT result FROM snapshots WHERE id = ? AND rescue_id = ?').bind(snapshotId, rescueId).first<{ result: string }>();
-    return row ? (JSON.parse(row.result) as SnapshotResult) : null;
+    const row = await this.db.prepare(`SELECT result FROM snapshots WHERE id = ? AND rescue_id = ? AND status = 'done'`).bind(snapshotId, rescueId).first<{ result: string | null }>();
+    return row?.result ? (JSON.parse(row.result) as SnapshotResult) : null;
+  }
+
+  /**
+   * Claims an Idempotency-Key before any dog is written, so two deliveries
+   * of the same snapshot cannot both apply it. Returns `claimed` when this
+   * call now owns the key (a fresh key, or a failed earlier attempt with the
+   * same body being retried); otherwise the row that holds it.
+   */
+  async claimSnapshot(row: { id: string; rescueId: string; idempotencyKey: string; bodyHash: string; capturedAt: string; processedAt: string; adapter: string; mode: string; complete: boolean }): Promise<{ claimed: true } | { claimed: false; existing: SnapshotRow }> {
+    const insert = await this.db
+      .prepare(`INSERT OR IGNORE INTO snapshots (id, rescue_id, idempotency_key, body_hash, captured_at, processed_at, adapter, mode, complete, status, result) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL)`)
+      .bind(row.id, row.rescueId, row.idempotencyKey, row.bodyHash, row.capturedAt, row.processedAt, row.adapter, row.mode, row.complete ? 1 : 0)
+      .run();
+    if (insert.meta.changes === 1) return { claimed: true };
+
+    // A failed attempt with the same body may be retried: take the row over atomically.
+    const retry = await this.db
+      .prepare(`UPDATE snapshots SET id = ?, captured_at = ?, processed_at = ?, adapter = ?, mode = ?, complete = ?, status = 'pending', result = NULL
+        WHERE idempotency_key = ? AND rescue_id = ? AND body_hash = ? AND status = 'failed'`)
+      .bind(row.id, row.capturedAt, row.processedAt, row.adapter, row.mode, row.complete ? 1 : 0, row.idempotencyKey, row.rescueId, row.bodyHash)
+      .run();
+    if (retry.meta.changes === 1) return { claimed: true };
+
+    const existing = await this.snapshotByKey(row.idempotencyKey);
+    if (!existing) throw new Error(`Idempotency-Key ${row.idempotencyKey} could neither be claimed nor read`);
+    return { claimed: false, existing };
+  }
+
+  async finishSnapshot(id: string, processedAt: string, result: SnapshotResult): Promise<void> {
+    await this.db.prepare(`UPDATE snapshots SET status = 'done', processed_at = ?, result = ? WHERE id = ?`).bind(processedAt, JSON.stringify(result), id).run();
+  }
+
+  async failSnapshot(id: string): Promise<void> {
+    await this.db.prepare(`UPDATE snapshots SET status = 'failed', result = NULL WHERE id = ?`).bind(id).run();
   }
 
   /**
    * Applies a reconciliation plan. Each created or updated dog is its own
-   * batch so one failure rejects that dog alone; touches, withdrawals and
-   * the snapshot record go in a final batch.
+   * batch so one failure rejects that dog alone; touches and withdrawals go
+   * in a final batch whose failure propagates to the caller.
    */
   async applyPlan(plan: ReconcilePlan, ctx: { rescueId: string; snapshotId: string; capturedAt: string; now: string }): Promise<{ rejected: { externalId: string; reason: string }[]; failedDogIds: Set<string> }> {
     const rejected = [...plan.rejected];
@@ -287,13 +353,6 @@ export class Repo {
     if (tail.length) await this.db.batch(tail);
 
     return { rejected, failedDogIds };
-  }
-
-  async recordSnapshot(row: { id: string; rescueId: string; idempotencyKey: string; bodyHash: string; capturedAt: string; processedAt: string; adapter: string; mode: string; complete: boolean; result: SnapshotResult }): Promise<void> {
-    await this.db
-      .prepare('INSERT INTO snapshots (id, rescue_id, idempotency_key, body_hash, captured_at, processed_at, adapter, mode, complete, result) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(row.id, row.rescueId, row.idempotencyKey, row.bodyHash, row.capturedAt, row.processedAt, row.adapter, row.mode, row.complete ? 1 : 0, JSON.stringify(row.result))
-      .run();
   }
 
   private breedInserts(dogId: string, breeds: DogBreed[]): D1PreparedStatement[] {

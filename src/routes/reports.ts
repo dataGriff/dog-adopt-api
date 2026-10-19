@@ -1,16 +1,24 @@
 import { Hono } from 'hono';
-import { GetDailyAvailabilityQueryParams, normalizeQuery, type DailyAvailabilityReport } from '@dogadopt/contracts';
+import { GetDailyAvailabilityQueryParams, normalizeQuery, ProblemError, type DailyAvailabilityReport } from '@dogadopt/contracts';
 import type { Env } from '../env.js';
-import { ProblemError } from '../problems.js';
 import { Repo, type StatusEventRow } from '../repo.js';
 import { parseOr400 } from '../validate.js';
 
 export const reports = new Hono<{ Bindings: Env }>();
 
+/** Longest span one report may cover, in days inclusive. Keeps a public endpoint bounded. */
+export const MAX_REPORT_DAYS = 366;
+
 reports.get('/v1/reports/daily-availability', async (c) => {
   const query = parseOr400(GetDailyAvailabilityQueryParams, normalizeQuery(new URL(c.req.url).searchParams), 'query');
   if (query.from > query.to) {
-    throw new ProblemError('validation_failed', 'from must not be after to', [{ path: 'from', message: 'must not be after to' }]);
+    throw new ProblemError('validation_failed', { detail: 'from must not be after to', errors: [{ path: 'from', message: 'must not be after to' }] });
+  }
+  if (daysInclusive(query.from, query.to) > MAX_REPORT_DAYS) {
+    throw new ProblemError('validation_failed', {
+      detail: `The report may cover at most ${MAX_REPORT_DAYS} days`,
+      errors: [{ path: 'to', message: `must be within ${MAX_REPORT_DAYS} days of from` }],
+    });
   }
   const events = await new Repo(c.env.DB).statusEventsUntil(endOfDay(query.to), query.rescueId);
   const body: DailyAvailabilityReport = {
@@ -23,6 +31,11 @@ reports.get('/v1/reports/daily-availability', async (c) => {
 });
 
 const endOfDay = (date: string) => `${date}T23:59:59.999Z`;
+
+/** Calendar days from `from` to `to`, both included. */
+export function daysInclusive(from: string, to: string): number {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000) + 1;
+}
 
 /**
  * Replays status events in time order. For each UTC day in [from, to] the

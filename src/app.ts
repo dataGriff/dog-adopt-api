@@ -1,9 +1,8 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import openapi from '@dogadopt/contracts/openapi.json';
-import type { Health } from '@dogadopt/contracts';
+import { ProblemError, problemResponse, type Health } from '@dogadopt/contracts';
 import type { Env } from './env.js';
-import { ProblemError, problemResponse } from './problems.js';
 import { breeds } from './routes/breeds.js';
 import { dogs } from './routes/dogs.js';
 import { ingest } from './routes/ingest.js';
@@ -36,11 +35,15 @@ export function createApp() {
   app.route('/', reports);
   app.route('/', ingest);
 
-  app.notFound((c) => problemResponse('not_found', `No route for ${c.req.method} ${new URL(c.req.url).pathname}`, undefined, new URL(c.req.url).pathname));
+  app.notFound((c) => {
+    const instance = new URL(c.req.url).pathname;
+    return problemResponse('not_found', { detail: `No route for ${c.req.method} ${instance}`, instance });
+  });
   app.onError((err, c) => {
-    if (err instanceof ProblemError) return problemResponse(err.errorCode, err.detail, err.errors, new URL(c.req.url).pathname);
+    const instance = new URL(c.req.url).pathname;
+    if (err instanceof ProblemError) return problemResponse(err.errorCode, { ...err.options, instance });
     console.error('unhandled error', err);
-    return problemResponse('internal_error', undefined, undefined, new URL(c.req.url).pathname);
+    return problemResponse('internal_error', { instance });
   });
 
   return app;

@@ -8,13 +8,11 @@ import {
   ListRescueDogsParams,
   ListRescueDogsQueryParams,
   normalizeQuery,
-  type Dog,
+  ProblemError,
   type DogPage,
 } from '@dogadopt/contracts';
 import type { Env } from '../env.js';
-import { haversineKm } from '../geo.js';
 import { pageMeta, toDog } from '../mappers.js';
-import { ProblemError } from '../problems.js';
 import { Repo, type DogListFilters } from '../repo.js';
 import { parseOr400, parseOr404 } from '../validate.js';
 
@@ -29,8 +27,8 @@ dogs.get('/v1/dogs', async (c) => {
 
 dogs.get('/v1/dogs/:dogId', async (c) => {
   const { dogId } = parseOr404(GetDogParams, c.req.param());
-  const row = await new Repo(c.env.DB).getDog(dogId, new Date());
-  if (!row) throw new ProblemError('not_found', `No dog with id ${dogId}`);
+  const row = await new Repo(c.env.DB).getDog(dogId);
+  if (!row) throw new ProblemError('not_found', { detail: `No dog with id ${dogId}` });
   return c.json(toDog(row, new Date()));
 });
 
@@ -38,7 +36,7 @@ dogs.get('/v1/rescues/:rescueId/dogs', async (c) => {
   const { rescueId } = parseOr404(ListRescueDogsParams, c.req.param());
   const query = parseOr400(ListRescueDogsQueryParams, normalizeQuery(new URL(c.req.url).searchParams, LIST_RESCUE_DOGS_QUERY_SHAPE), 'query');
   const repo = new Repo(c.env.DB);
-  if (!(await repo.rescueExists(rescueId))) throw new ProblemError('not_found', `No rescue with id ${rescueId}`);
+  if (!(await repo.rescueExists(rescueId))) throw new ProblemError('not_found', { detail: `No rescue with id ${rescueId}` });
   return c.json(await listDogs(repo, { ...query, rescueId }));
 });
 
@@ -46,9 +44,10 @@ async function listDogs(repo: Repo, query: Partial<Query> & { page: number; page
   const now = new Date();
   const geo = query.lat !== undefined || query.lng !== undefined || query.radiusKm !== undefined;
   if (geo && (query.lat === undefined || query.lng === undefined)) {
-    throw new ProblemError('validation_failed', 'lat and lng must be given together, and radiusKm only with both', [
-      { path: query.lat === undefined ? 'lat' : 'lng', message: 'required with lng, lat or radiusKm' },
-    ]);
+    throw new ProblemError('validation_failed', {
+      detail: 'lat and lng must be given together, and radiusKm only with both',
+      errors: [{ path: query.lat === undefined ? 'lat' : 'lng', message: 'required with lng, lat or radiusKm' }],
+    });
   }
   const filters: DogListFilters = {
     statuses: query.status && query.status.length ? query.status : ENQUIRABLE_STATUSES,
@@ -62,30 +61,14 @@ async function listDogs(repo: Repo, query: Partial<Query> & { page: number; page
     goodWithDogs: query.goodWithDogs,
     goodWithCats: query.goodWithCats,
     q: query.q,
+    // Distance is computed, filtered, ordered and paged in SQL; only the page's rows come back.
+    near: geo ? { lat: query.lat as number, lng: query.lng as number, radiusKm: query.radiusKm } : undefined,
   };
-
-  if (!geo) {
-    const { items, total } = await repo.listDogs(filters, now, { page: query.page, pageSize: query.pageSize });
-    return { items: items.map((r) => toDog(r, now)), meta: pageMeta(query.page, query.pageSize, total) };
-  }
-
-  // Distance ordering: every match is loaded, measured, filtered and paged here.
-  const lat = query.lat as number;
-  const lng = query.lng as number;
-  const { items } = await repo.listDogs(filters, now, null);
-  let measured: { dog: Dog; distance: number | null }[] = items.map((r) => {
-    const distance = r.rescue_latitude !== null && r.rescue_longitude !== null ? haversineKm(lat, lng, r.rescue_latitude, r.rescue_longitude) : null;
-    return { dog: toDog(r, now, distance === null ? undefined : round(distance)), distance };
-  });
-  if (query.radiusKm !== undefined) measured = measured.filter((m) => m.distance !== null && m.distance <= (query.radiusKm as number));
-  measured.sort((a, b) => {
-    if (a.distance === null && b.distance === null) return 0;
-    if (a.distance === null) return 1;
-    if (b.distance === null) return -1;
-    return a.distance - b.distance;
-  });
-  const start = (query.page - 1) * query.pageSize;
-  return { items: measured.slice(start, start + query.pageSize).map((m) => m.dog), meta: pageMeta(query.page, query.pageSize, measured.length) };
+  const { items, total } = await repo.listDogs(filters, now, { page: query.page, pageSize: query.pageSize });
+  return {
+    items: items.map((r) => toDog(r, now, r.distance_km === null || r.distance_km === undefined ? undefined : round(r.distance_km))),
+    meta: pageMeta(query.page, query.pageSize, total),
+  };
 }
 
 const round = (km: number) => Math.round(km * 100) / 100;

@@ -1,8 +1,10 @@
 import { applyD1Migrations, env } from 'cloudflare:test';
 import { beforeEach } from 'vitest';
 
-// Runs once per test file: migrate (idempotent) and seed the shared D1.
+// Runs once per test file: migrate (idempotent) and apply the idempotent
+// reference-data seed, exactly as a deploy does.
 await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
+await env.DB.exec(env.TEST_SEED_SQL.split('\n').filter((l) => l.trim() && !l.startsWith('--')).join('\n'));
 
 // The plugin does not isolate storage between tests, so every test starts
 // from the seeded reference data with nothing a previous test wrote.

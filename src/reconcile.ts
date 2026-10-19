@@ -60,6 +60,8 @@ export interface ReconcilePlan {
   updates: UpdatePlan[];
   /** Unchanged dogs whose last_seen_at should advance to capturedAt. */
   touches: string[];
+  /** Dogs the snapshot lists that a newer capture has already seen; nothing is applied for them. Counted as unchanged. */
+  stale: string[];
   withdrawals: { id: string; externalId: string; lastSeenAt: string }[];
   rejected: { externalId: string; reason: string }[];
   events: DogEvent[];
@@ -68,6 +70,7 @@ export interface ReconcilePlan {
 export interface ReconcileInput {
   rescueId: string;
   snapshotId: string;
+  /** capturedAt must already be a UTC ISO string (`Z`, millisecond precision) so timestamps compare as strings. */
   snapshot: RescueSnapshot;
   /** Every dog currently held for the rescue, finder-managed or not. */
   existing: DogWithBreeds[];
@@ -129,6 +132,11 @@ export function breedsFromFound(found: FoundDog, resolver: BreedResolver): DogBr
   return out;
 }
 
+/** The capture time of the latest snapshot that decided anything about the dog: its last sighting or its withdrawal. */
+function lastDecidedAt(dog: DogWithBreeds): string {
+  return dog.withdrawn_at !== null && dog.withdrawn_at > dog.last_seen_at ? dog.withdrawn_at : dog.last_seen_at;
+}
+
 function sameBreeds(a: DogBreed[], b: DogBreed[]): boolean {
   if (a.length !== b.length) return false;
   return a.every((x, i) => x.breedName === b[i]!.breedName && x.unresolvedName === b[i]!.unresolvedName);
@@ -137,7 +145,7 @@ function sameBreeds(a: DogBreed[], b: DogBreed[]): boolean {
 export function reconcile(input: ReconcileInput): ReconcilePlan {
   const { rescueId, snapshotId, snapshot, breeds, newId } = input;
   const capturedAt = snapshot.capturedAt;
-  const plan: ReconcilePlan = { creates: [], updates: [], touches: [], withdrawals: [], rejected: [], events: [] };
+  const plan: ReconcilePlan = { creates: [], updates: [], touches: [], stale: [], withdrawals: [], rejected: [], events: [] };
 
   const byExternalId = new Map<string, DogWithBreeds>();
   for (const dog of input.existing) if (dog.external_id !== null) byExternalId.set(dog.external_id, dog);
@@ -167,6 +175,12 @@ export function reconcile(input: ReconcileInput): ReconcilePlan {
       continue;
     }
 
+    if (lastDecidedAt(existing) > capturedAt) {
+      // An out-of-order delivery: a later capture has already been applied, so this one must not regress anything.
+      plan.stale.push(existing.id);
+      continue;
+    }
+
     const changedFields: string[] = [];
     for (const key of Object.keys(FIELD_TO_CAMEL) as (keyof DogFields)[]) {
       if (existing[key] !== fields[key]) changedFields.push(FIELD_TO_CAMEL[key]);
@@ -191,7 +205,7 @@ export function reconcile(input: ReconcileInput): ReconcilePlan {
       if (dog.external_id === null) continue; // hand-entered: never withdrawn by the finder
       if (seenInSnapshot.has(dog.external_id)) continue;
       if (!(ENQUIRABLE_STATUSES as readonly string[]).includes(dog.status)) continue; // already withdrawn or adopted
-      if (dog.last_seen_at > capturedAt) continue; // a newer capture has already seen it
+      if (lastDecidedAt(dog) > capturedAt) continue; // a newer capture has already decided about it
       plan.withdrawals.push({ id: dog.id, externalId: dog.external_id, lastSeenAt: dog.last_seen_at });
       plan.events.push(
         makeEvent(EVENT_TYPES.dogWithdrawn, EVENT_SOURCES.dogsApi, subject(dog.id), {

@@ -11,13 +11,16 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "build:seed": "node scripts/build-seed-migration.mjs",
+    "seed:build": "node scripts/build-seed.mjs",
     "db:migrate:local": "wrangler d1 migrations apply dogadopt --local",
     "db:migrate:remote": "wrangler d1 migrations apply dogadopt --remote",
+    "db:seed:local": "wrangler d1 execute dogadopt --local --file=seed/reference-data.sql",
+    "db:seed:remote": "wrangler d1 execute dogadopt --remote --file=seed/reference-data.sql",
+    "db:setup:local": "pnpm db:migrate:local && pnpm db:seed:local",
     "cf-typegen": "wrangler types"
   },
   "dependencies": {
-    "@dogadopt/contracts": "github:dataGriff/dog-adopt-spec#ccr-36d5f29f-ktwvoo",
+    "@dogadopt/contracts": "github:dataGriff/dog-adopt-spec#831a65676ba4a9e4bda06de644f0b7611096e57f",
     "hono": "^4.13.13",
     "zod": "^4.0.0"
   },

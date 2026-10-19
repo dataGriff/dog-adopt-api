@@ -10,7 +10,7 @@ const base = (over: Partial<DogWithBreeds> = {}): DogWithBreeds => ({
   id: 'd1', rescue_id: 'r1', external_id: 'bella-2', name: 'Bella', status: 'available', status_notes: null, age: 'Adult', birth_year: null, birth_month: null, birth_day: null,
   size: 'Medium', gender: 'Female', good_with_kids: null, good_with_dogs: null, good_with_cats: null, image_url: null, profile_url: null, description: null,
   rescue_since_date: null, first_seen_at: '2026-10-01T00:00:00.000Z', last_seen_at: '2026-10-01T00:00:00.000Z', created_at: '2026-10-01T00:00:00.000Z', updated_at: '2026-10-01T00:00:00.000Z',
-  breeds: [{ displayOrder: 1, breedName: 'Staffordshire Bull Terrier', unresolvedName: null }], ...over,
+  breeds: [{ displayOrder: 1, breedName: 'Staffordshire Bull Terrier', unresolvedName: null }], withdrawn_at: null, ...over,
 });
 
 const input = (existing: DogWithBreeds[], dogs: Parameters<typeof reconcile>[0]['snapshot']['dogs'], complete = true) => ({
@@ -46,6 +46,17 @@ describe('reconcile', () => {
     ];
     expect(reconcile(input(existing, [])).withdrawals.map((w) => w.id)).toEqual(['gone']);
     expect(reconcile(input(existing, [], false)).withdrawals).toEqual([]);
+  });
+  it('treats a snapshot older than a dog\'s last sighting or withdrawal as stale', () => {
+    const existing = [
+      base({ id: 'seen-later', external_id: 'a', last_seen_at: '2026-10-19T09:00:00.000Z' }),
+      base({ id: 'withdrawn-later', external_id: 'b', status: 'withdrawn', last_seen_at: '2026-10-19T07:00:00.000Z', withdrawn_at: '2026-10-19T09:00:00.000Z' }),
+      base({ id: 'current', external_id: 'c', last_seen_at: '2026-10-19T07:00:00.000Z' }),
+    ];
+    const plan = reconcile(input(existing, [dog('a', 'Renamed'), dog('b', 'Back'), dog('c', 'Renamed too')]));
+    expect(plan.stale.sort()).toEqual(['seen-later', 'withdrawn-later']);
+    expect(plan.updates.map((u) => u.id)).toEqual(['current']);
+    expect(plan.events).toHaveLength(1);
   });
   it('resolves breeds through synonyms, keeps unknowns, and drops duplicates', () => {
     expect(breedsFromFound(dog('a', 'A', { breeds: ['Staffie', 'Staffordshire Bull Terrier', 'Sprollie', ' lab '] }), resolver)).toEqual([

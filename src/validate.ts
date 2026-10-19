@@ -1,10 +1,10 @@
 import type { z } from 'zod';
-import { ProblemError, zodIssuesToErrors } from './problems.js';
+import { ProblemError, issuesToErrors } from '@dogadopt/contracts';
 
 /** Parses with a generated contract schema; a failure is a 400 problem. */
 export function parseOr400<S extends z.ZodTypeAny>(schema: S, value: unknown, what: string): z.infer<S> {
   const result = schema.safeParse(value);
-  if (!result.success) throw new ProblemError('validation_failed', `Invalid ${what}`, zodIssuesToErrors(result.error));
+  if (!result.success) throw new ProblemError('validation_failed', { detail: `Invalid ${what}`, errors: issuesToErrors(result.error) });
   return result.data;
 }
 

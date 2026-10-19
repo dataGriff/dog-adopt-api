@@ -29,6 +29,13 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           packageManager: pnpm
           command: d1 migrations apply dogadopt --remote
+      - name: Apply reference data (idempotent)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          packageManager: pnpm
+          command: d1 execute dogadopt --remote --file=seed/reference-data.sql
       - name: Deploy
         uses: cloudflare/wrangler-action@v3
         with:

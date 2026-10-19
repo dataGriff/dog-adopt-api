@@ -22,5 +22,5 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
-      - name: Seed migration is current
-        run: pnpm build:seed && git diff --exit-code -- migrations
+      - name: Seed SQL is current
+        run: pnpm seed:build && git diff --exit-code -- seed

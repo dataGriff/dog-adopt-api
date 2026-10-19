@@ -1,8 +1,7 @@
 import { Hono } from 'hono';
-import { GetRescueParams, LIST_RESCUES_QUERY_SHAPE, ListRescuesQueryParams, normalizeQuery, type RescuePage } from '@dogadopt/contracts';
+import { GetRescueParams, LIST_RESCUES_QUERY_SHAPE, ListRescuesQueryParams, normalizeQuery, ProblemError, type RescuePage } from '@dogadopt/contracts';
 import type { Env } from '../env.js';
 import { pageMeta, toRescue } from '../mappers.js';
-import { ProblemError } from '../problems.js';
 import { Repo } from '../repo.js';
 import { parseOr400, parseOr404 } from '../validate.js';
 
@@ -18,6 +17,6 @@ rescues.get('/v1/rescues', async (c) => {
 rescues.get('/v1/rescues/:rescueId', async (c) => {
   const { rescueId } = parseOr404(GetRescueParams, c.req.param());
   const row = await new Repo(c.env.DB).getRescue(rescueId);
-  if (!row) throw new ProblemError('not_found', `No rescue with id ${rescueId}`);
+  if (!row) throw new ProblemError('not_found', { detail: `No rescue with id ${rescueId}` });
   return c.json(toRescue(row));
 });

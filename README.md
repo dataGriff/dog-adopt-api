@@ -21,13 +21,14 @@ src/
   reconcile.ts    pure snapshot reconciliation (no I/O), the heart of ingest
   repo.ts         every D1 query
   mappers.ts      rows -> contract JSON
-  problems.ts     ProblemError and problem responses
   validate.ts     parseOr400 / parseOr404 with the generated schemas
 migrations/
   0001_schema.sql
-  0002_seed_reference_data.sql   generated from the contracts' seed data (rescues, breeds, synonyms)
-scripts/build-seed-migration.mjs
-test/             contract, reconcile, browse-dogs (feature), ingest-snapshot (feature)
+  0002_seed_reference_data.sql   placeholder; the seed moved to seed/ (see below)
+  0003_snapshot_status.sql       snapshots claim their Idempotency-Key before any write
+seed/reference-data.sql          idempotent rescues, breeds and synonyms, generated from the contracts' seed data
+scripts/build-seed.mjs
+test/             contract, reconcile, browse-dogs (feature), ingest-snapshot (feature), ingest-ordering, reports-range
 ```
 
 ## Local development
@@ -35,7 +36,7 @@ test/             contract, reconcile, browse-dogs (feature), ingest-snapshot (f
 ```sh
 pnpm install
 cp .dev.vars.example .dev.vars        # sets FINDER_TOKEN for local ingest calls
-pnpm db:migrate:local                 # creates the local D1 and applies migrations + seed
+pnpm db:setup:local                   # creates the local D1, applies migrations, then the reference-data seed
 pnpm dev                              # http://localhost:8787
 ```
 
@@ -74,11 +75,22 @@ pnpm typecheck
 pnpm test
 ```
 
-`pnpm test` applies the migrations to an in-memory D1 and runs:
+`pnpm test` applies the migrations and the seed to an in-memory D1 and runs:
 
 - `test/contract.test.ts`: every operationId in the OpenAPI has a route, and nothing undeclared is routed.
 - `test/browse-dogs.test.ts` and `test/ingest-snapshot.test.ts`: one test per scenario in the feature files, with every 200 response body validated against the generated response schema.
 - `test/reconcile.test.ts`: the pure reconciliation plan.
+- `test/ingest-ordering.test.ts`: UTC-offset timestamps are normalised, out-of-order snapshots never regress a dog, and the Idempotency-Key is claimed before any write (a failed attempt is re-processed, an in-flight one answers 409).
+- `test/reports-range.test.ts`: the daily availability report covers at most 366 days.
+
+## Reference data
+
+Rescues, breeds and synonyms come from `@dogadopt/contracts` and are written to `seed/reference-data.sql` by `pnpm seed:build`. The file is idempotent (rescues upsert on their fixed id, breeds and synonyms insert if missing), so it is applied after every migration run rather than being a migration itself: a migration runs once per database and would never carry a later seed change to a database that had already applied it. CI fails if the committed file is stale.
+
+```sh
+pnpm db:seed:local     # wrangler d1 execute --local --file=seed/reference-data.sql
+pnpm db:seed:remote
+```
 
 ## Configuration
 
@@ -90,18 +102,25 @@ pnpm test
 
 Secrets (`wrangler secret put`):
 
-- `FINDER_TOKEN`: the bearer token the finder sends on `/v1/ingest/*`. Compared in constant time.
+- `FINDER_TOKEN`: the bearer token the finder sends on `/v1/ingest/*`. Compared in constant time with the package's `bearerMatches`.
+
+## Ingest guarantees
+
+- `capturedAt` may carry any UTC offset; it is normalised to a `Z` ISO string before anything is hashed, stored or compared.
+- The `Idempotency-Key` is claimed in the `snapshots` table before any dog is written. A replay with the same body returns the stored result; a different body is a 409; a key still in flight is a 409 asking to retry; a key whose attempt failed is re-processed.
+- A snapshot older than a dog's `lastSeenAt` (an out-of-order delivery) changes nothing for that dog and emits no event.
+- Distance ordering, radius filtering and paging for `lat`/`lng` queries run in SQL, so a page costs a page.
 
 ## The contracts package
 
-`package.json` pins `@dogadopt/contracts` to a git ref of dog-adopt-spec:
+`package.json` pins `@dogadopt/contracts` to a commit of dog-adopt-spec, so an install without the lockfile resolves to exactly what was tested:
 
 ```json
-"@dogadopt/contracts": "github:dataGriff/dog-adopt-spec#ccr-36d5f29f-ktwvoo"
+"@dogadopt/contracts": "github:dataGriff/dog-adopt-spec#<commit sha>"
 ```
 
-To pick up a contract change: move the ref (a tag once released), `pnpm update @dogadopt/contracts`, `pnpm build:seed` if seed data changed, then run the checks. The package ships its built `dist/`, so no build step runs on install.
+To pick up a contract change: move the sha (a tag once released), `pnpm install`, `pnpm seed:build` if seed data changed, then run the checks. The package ships its built `dist/`, so no build step runs on install.
 
 ## Deploying
 
-`.github/workflows/deploy.yml` applies migrations and deploys on pushes to `main` once the repository variable `CLOUDFLARE_DEPLOY_ENABLED` is `true` and the secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` exist. Nothing is deployed from this repository until then.
+`.github/workflows/deploy.yml` applies migrations, applies the reference-data seed, and deploys on pushes to `main` once the repository variable `CLOUDFLARE_DEPLOY_ENABLED` is `true` and the secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` exist. Nothing is deployed from this repository until then.

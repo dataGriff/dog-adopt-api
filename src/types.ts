@@ -54,4 +54,6 @@ export interface DogBreed {
 
 export interface DogWithBreeds extends DogRow {
   breeds: DogBreed[];
+  /** effective_at of the latest withdrawal event, or null if never withdrawn. Withdrawal does not move last_seen_at, so this is what makes an older re-listing recognisable as stale. */
+  withdrawn_at: string | null;
 }
