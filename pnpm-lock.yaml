@@ -9,7 +9,7 @@ importers:
   .:
     dependencies:
       '@dogadopt/contracts':
-        specifier: github:dataGriff/dog-adopt-spec#831a65676ba4a9e4bda06de644f0b7611096e57f
+        specifier: git+https://github.com/dataGriff/dog-adopt-spec.git#831a65676ba4a9e4bda06de644f0b7611096e57f
         version: git+https://git@github.com:dataGriff/dog-adopt-spec.git#831a65676ba4a9e4bda06de644f0b7611096e57f
       hono:
         specifier: ^4.13.13

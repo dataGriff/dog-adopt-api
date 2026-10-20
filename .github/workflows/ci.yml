@@ -18,6 +18,17 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      - name: Allow installing @dogadopt/contracts from the private spec repo
+        # pnpm clones dog-adopt-spec over git. GITHUB_TOKEN only reads this
+        # repository, so a fine-grained PAT with Contents: read on
+        # dataGriff/dog-adopt-spec is stored as CONTRACTS_READ_TOKEN. Every
+        # GitHub URL form pnpm may use is rewritten to use it.
+        env:
+          TOKEN: ${{ secrets.CONTRACTS_READ_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          for from in "https://github.com/" "git@github.com:" "ssh://git@github.com/"; do
+            git config --global --add url."https://x-access-token:${TOKEN}@github.com/".insteadOf "$from"
+          done
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm typecheck

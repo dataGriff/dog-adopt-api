@@ -124,3 +124,7 @@ To pick up a contract change: move the sha (a tag once released), `pnpm install`
 ## Deploying
 
 `.github/workflows/deploy.yml` applies migrations, applies the reference-data seed, and deploys on pushes to `main` once the repository variable `CLOUDFLARE_DEPLOY_ENABLED` is `true` and the secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` exist. Nothing is deployed from this repository until then.
+
+### Installing the contracts in CI
+
+`dog-adopt-spec` is a private repository, so GitHub Actions needs a token that can read it. Create a fine-grained personal access token with **Contents: read** on `dataGriff/dog-adopt-spec` and store it in this repository as the secret `CONTRACTS_READ_TOKEN`. The CI and deploy workflows rewrite every GitHub clone URL to use it before `pnpm install`. If the spec repository is made public the secret is no longer needed.
