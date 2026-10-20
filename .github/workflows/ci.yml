@@ -18,11 +18,12 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      - name: Allow installing @dogadopt/contracts from the private spec repo
-        # pnpm clones dog-adopt-spec over git. GITHUB_TOKEN only reads this
-        # repository, so a fine-grained PAT with Contents: read on
-        # dataGriff/dog-adopt-spec is stored as CONTRACTS_READ_TOKEN. Every
-        # GitHub URL form pnpm may use is rewritten to use it.
+      - name: Install @dogadopt/contracts over HTTPS
+        # pnpm clones dog-adopt-spec over git and may pick an SSH URL, which
+        # runners cannot use. Every GitHub URL form is rewritten to HTTPS with
+        # a token. dog-adopt-spec is public, so GITHUB_TOKEN is enough; set the
+        # CONTRACTS_READ_TOKEN secret (a PAT with Contents: read on the spec
+        # repo) only if it is ever made private again.
         env:
           TOKEN: ${{ secrets.CONTRACTS_READ_TOKEN || secrets.GITHUB_TOKEN }}
         run: |

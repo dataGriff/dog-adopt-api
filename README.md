@@ -127,4 +127,4 @@ To pick up a contract change: move the sha (a tag once released), `pnpm install`
 
 ### Installing the contracts in CI
 
-`dog-adopt-spec` is a private repository, so GitHub Actions needs a token that can read it. Create a fine-grained personal access token with **Contents: read** on `dataGriff/dog-adopt-spec` and store it in this repository as the secret `CONTRACTS_READ_TOKEN`. The CI and deploy workflows rewrite every GitHub clone URL to use it before `pnpm install`. If the spec repository is made public the secret is no longer needed.
+pnpm clones `dog-adopt-spec` over git and may choose an SSH URL, which GitHub runners cannot use, so the CI and deploy workflows rewrite every GitHub clone URL to HTTPS with a token before `pnpm install`. `dog-adopt-spec` is public, so the workflow's own `GITHUB_TOKEN` is enough. If the spec repository is ever made private again, create a fine-grained personal access token with **Contents: read** on `dataGriff/dog-adopt-spec` and store it here as the secret `CONTRACTS_READ_TOKEN`.
