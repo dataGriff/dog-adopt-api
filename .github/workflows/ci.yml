@@ -18,18 +18,6 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      - name: Install @dogadopt/contracts over HTTPS
-        # pnpm clones dog-adopt-spec over git and may pick an SSH URL, which
-        # runners cannot use. Every GitHub URL form is rewritten to HTTPS with
-        # a token. dog-adopt-spec is public, so GITHUB_TOKEN is enough; set the
-        # CONTRACTS_READ_TOKEN secret (a PAT with Contents: read on the spec
-        # repo) only if it is ever made private again.
-        env:
-          TOKEN: ${{ secrets.CONTRACTS_READ_TOKEN || secrets.GITHUB_TOKEN }}
-        run: |
-          for from in "https://github.com/" "git@github.com:" "ssh://git@github.com/"; do
-            git config --global --add url."https://x-access-token:${TOKEN}@github.com/".insteadOf "$from"
-          done
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm typecheck

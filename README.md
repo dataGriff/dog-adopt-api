@@ -119,12 +119,10 @@ Secrets (`wrangler secret put`):
 "@dogadopt/contracts": "github:dataGriff/dog-adopt-spec#<commit sha>"
 ```
 
-To pick up a contract change: move the sha (a tag once released), `pnpm install`, `pnpm seed:build` if seed data changed, then run the checks. The package ships its built `dist/`, so no build step runs on install.
+The lockfile resolves it to the GitHub tarball of that commit (`codeload.github.com/.../tar.gz/<sha>`), so installing needs neither git nor a token while dog-adopt-spec stays public. Move the pin with `pnpm add github:dataGriff/dog-adopt-spec#<new sha>` rather than editing `package.json` or `pnpm-lock.yaml` by hand, so the lockfile is regenerated with it.
+
+To pick up a contract change: move the pin as above (a tag once released), `pnpm seed:build` if seed data changed, then run the checks. The package ships its built `dist/`, so no build step runs on install.
 
 ## Deploying
 
 `.github/workflows/deploy.yml` applies migrations, applies the reference-data seed, and deploys on pushes to `main` once the repository variable `CLOUDFLARE_DEPLOY_ENABLED` is `true` and the secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` exist. Nothing is deployed from this repository until then.
-
-### Installing the contracts in CI
-
-pnpm clones `dog-adopt-spec` over git and may choose an SSH URL, which GitHub runners cannot use, so the CI and deploy workflows rewrite every GitHub clone URL to HTTPS with a token before `pnpm install`. `dog-adopt-spec` is public, so the workflow's own `GITHUB_TOKEN` is enough. If the spec repository is ever made private again, create a fine-grained personal access token with **Contents: read** on `dataGriff/dog-adopt-spec` and store it here as the secret `CONTRACTS_READ_TOKEN`.
