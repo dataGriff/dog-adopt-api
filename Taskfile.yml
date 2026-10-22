@@ -1,0 +1,38 @@
+version: "3"
+
+tasks:
+  default:
+    desc: List tasks
+    cmds: [task --list]
+  install:
+    desc: Install dependencies
+    cmds: [pnpm install]
+  dev:
+    desc: Run the worker locally with a local D1 (applies migrations and seed first)
+    cmds:
+      - pnpm db:setup:local
+      - pnpm dev
+  lint:
+    desc: ESLint
+    cmds: [pnpm lint]
+  typecheck:
+    desc: TypeScript
+    cmds: [pnpm typecheck]
+  test:
+    desc: Vitest in workerd with the migrated D1
+    cmds: [pnpm test]
+  check:
+    desc: What CI runs
+    cmds: [pnpm lint, pnpm typecheck, pnpm test]
+  seed:
+    desc: Regenerate seed/reference-data.sql from @dogadopt/contracts
+    cmds: [pnpm seed:build]
+  contracts:update:
+    desc: Pull the latest contracts package from its pinned git ref
+    cmds: [pnpm update @dogadopt/contracts]
+  deploy:
+    desc: Deploy with wrangler (needs CLOUDFLARE_API_TOKEN or `wrangler login`)
+    cmds:
+      - pnpm db:migrate:remote
+      - pnpm db:seed:remote
+      - pnpm deploy

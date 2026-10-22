@@ -1,0 +1,48 @@
+{
+  "name": "dog-adopt-api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Dogs API: Cloudflare Worker serving dogs and rescues and ingesting finder snapshots, built against @dogadopt/contracts.",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "seed:build": "node scripts/build-seed.mjs",
+    "db:migrate:local": "wrangler d1 migrations apply dogadopt --local",
+    "db:migrate:remote": "wrangler d1 migrations apply dogadopt --remote",
+    "db:seed:local": "wrangler d1 execute dogadopt --local --file=seed/reference-data.sql",
+    "db:seed:remote": "wrangler d1 execute dogadopt --remote --file=seed/reference-data.sql",
+    "db:setup:local": "pnpm db:migrate:local && pnpm db:seed:local",
+    "cf-typegen": "wrangler types"
+  },
+  "dependencies": {
+    "@dogadopt/contracts": "github:dataGriff/dog-adopt-spec#831a65676ba4a9e4bda06de644f0b7611096e57f",
+    "hono": "^4.13.13",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.4.5",
+    "@cloudflare/workers-types": "^5.20261019.1",
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.13.0",
+    "globals": "^16.5.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.72.0",
+    "vitest": "^4.1.12",
+    "wrangler": "^4.151.2"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "workerd",
+      "sharp"
+    ]
+  }
+}

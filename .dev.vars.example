@@ -1,0 +1,2 @@
+# Copy to .dev.vars for `pnpm dev`. In production set with `wrangler secret put FINDER_TOKEN`.
+FINDER_TOKEN=local-dev-finder-token-change-me
